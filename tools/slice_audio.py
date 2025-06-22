@@ -11,12 +11,24 @@ from slicer2 import Slicer
 
 
 def slice(inp, opt_root, threshold, min_length, min_interval, hop_size, max_sil_kept, _max, alpha, i_part, all_part):
+    # print("inp", inp, 
+    #       "opt_root", opt_root,
+    #       "threshold", threshold, 
+    #       "min_length", min_length, 
+    #       "min_interval", min_interval,
+    #       "hop_size", hop_size,
+    #       "max_sil_kept", max_sil_kept,
+    #       "_max", _max,
+    #       "alpha", alpha,
+    #       "i_part", i_part,
+    #       "all_part", all_part)
     os.makedirs(opt_root, exist_ok=True)
     if os.path.isfile(inp):
         input = [inp]
     elif os.path.isdir(inp):
         input = [os.path.join(inp, name) for name in sorted(list(os.listdir(inp)))]
     else:
+        raise Exception("输入路径存在但既不是文件也不是文件夹")
         return "输入路径存在但既不是文件也不是文件夹"
     slicer = Slicer(
         sr=32000,  # 长音频采样率
@@ -46,8 +58,9 @@ def slice(inp, opt_root, threshold, min_length, min_interval, hop_size, max_sil_
                     (chunk * 32767).astype(np.int16),
                 )
         except:
+            raise
             print(inp_path, "->fail->", traceback.format_exc())
     return "执行完毕，请检查输出文件"
 
-
-print(slice(*sys.argv[1:]))
+if __name__ == "__main__":
+    print(slice(*sys.argv[1:]))

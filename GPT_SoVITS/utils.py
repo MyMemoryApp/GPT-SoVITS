@@ -232,6 +232,25 @@ def get_hparams(init=True, stage=1):
         f.write(data)
     return hparams
 
+def get_hparams_with_config(config, stage=1):
+    hparams = HParams(**config)
+    hparams.pretrain = None
+    hparams.resume_step = None
+    # hparams.data.exp_dir = args.exp_dir
+    if stage == 1:
+        model_dir = hparams.s1_ckpt_dir
+    else:
+        model_dir = hparams.s2_ckpt_dir
+    config_save_path = os.path.join(model_dir, "config.json")
+
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+
+    with open(config_save_path, "w") as f:
+        data = json.dumps(config)
+        f.write(data)
+    return hparams
+
 
 def clean_checkpoints(path_to_models="logs/44k/", n_ckpts_to_keep=2, sort_by_time=True):
     """Freeing up space by deleting saved ckpts

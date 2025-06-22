@@ -554,6 +554,8 @@ def open1Ba(
             {"__type__": "update"},
         )
         print(cmd)
+        print(config_file)
+        print(tmp_config_path)
         p_train_SoVITS = Popen(cmd, shell=True)
         p_train_SoVITS.wait()
         p_train_SoVITS = None
@@ -646,6 +648,7 @@ def open1Bb(
             {"__type__": "update"},
         )
         print(cmd)
+        print(tmp_config_path)
         p_train_GPT = Popen(cmd, shell=True)
         p_train_GPT.wait()
         p_train_GPT = None
@@ -809,8 +812,9 @@ def open1a(inp_text, inp_wav_dir, exp_name, gpu_numbers, bert_pretrained_dir):
                 }
             )
             os.environ.update(config)
-            cmd = '"%s" -s GPT_SoVITS/prepare_datasets/1-get-text.py' % python_exec
+            cmd = '"%s" -s GPT_SoVITS/prepare_datasets/s1_get_text.py' % python_exec
             print(cmd)
+            print(config)
             p = Popen(cmd, shell=True)
             ps1a.append(p)
         yield (
@@ -899,8 +903,9 @@ def open1b(version, inp_text, inp_wav_dir, exp_name, gpu_numbers, ssl_pretrained
                 }
             )
             os.environ.update(config)
-            cmd = '"%s" -s GPT_SoVITS/prepare_datasets/2-get-hubert-wav32k.py' % python_exec
+            cmd = '"%s" -s GPT_SoVITS/prepare_datasets/s2_get_hubert_wav32k.py' % python_exec
             print(cmd)
+            print(config)
             p = Popen(cmd, shell=True)
             ps1b.append(p)
         yield (
@@ -921,8 +926,9 @@ def open1b(version, inp_text, inp_wav_dir, exp_name, gpu_numbers, ssl_pretrained
                     }
                 )
                 os.environ.update(config)
-                cmd = '"%s" -s GPT_SoVITS/prepare_datasets/2-get-sv.py' % python_exec
+                cmd = '"%s" -s GPT_SoVITS/prepare_datasets/s2_get_sv.py' % python_exec
                 print(cmd)
+                print(config)
                 p = Popen(cmd, shell=True)
                 ps1b.append(p)
             for p in ps1b:
@@ -993,8 +999,9 @@ def open1c(version, inp_text, inp_wav_dir, exp_name, gpu_numbers, pretrained_s2G
                 }
             )
             os.environ.update(config)
-            cmd = '"%s" -s GPT_SoVITS/prepare_datasets/3-get-semantic.py' % python_exec
+            cmd = '"%s" -s GPT_SoVITS/prepare_datasets/s3_get_semantic.py' % python_exec
             print(cmd)
+            print(config)
             p = Popen(cmd, shell=True)
             ps1c.append(p)
         yield (
@@ -1093,8 +1100,9 @@ def open1abc(
                         }
                     )
                     os.environ.update(config)
-                    cmd = '"%s" -s GPT_SoVITS/prepare_datasets/1-get-text.py' % python_exec
+                    cmd = '"%s" -s GPT_SoVITS/prepare_datasets/s1_get_text.py' % python_exec
                     print(cmd)
+                    print(config)
                     p = Popen(cmd, shell=True)
                     ps1abc.append(p)
                 yield (
@@ -1140,8 +1148,9 @@ def open1abc(
                     }
                 )
                 os.environ.update(config)
-                cmd = '"%s" -s GPT_SoVITS/prepare_datasets/2-get-hubert-wav32k.py' % python_exec
+                cmd = '"%s" -s GPT_SoVITS/prepare_datasets/s2_get_hubert_wav32k.py' % python_exec
                 print(cmd)
+                print(config)
                 p = Popen(cmd, shell=True)
                 ps1abc.append(p)
             yield (
@@ -1162,8 +1171,9 @@ def open1abc(
                         }
                     )
                     os.environ.update(config)
-                    cmd = '"%s" -s GPT_SoVITS/prepare_datasets/2-get-sv.py' % python_exec
+                    cmd = '"%s" -s GPT_SoVITS/prepare_datasets/s2_get_sv.py' % python_exec
                     print(cmd)
+                    print(config)
                     p = Popen(cmd, shell=True)
                     ps1abc.append(p)
                 for p in ps1abc:
@@ -1202,8 +1212,9 @@ def open1abc(
                         }
                     )
                     os.environ.update(config)
-                    cmd = '"%s" -s GPT_SoVITS/prepare_datasets/3-get-semantic.py' % python_exec
+                    cmd = '"%s" -s GPT_SoVITS/prepare_datasets/s3_get_semantic.py' % python_exec
                     print(cmd)
+                    print(config)
                     p = Popen(cmd, shell=True)
                     ps1abc.append(p)
                 yield (

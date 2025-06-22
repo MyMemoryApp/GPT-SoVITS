@@ -18,11 +18,13 @@ speakers.json
 ref_audios
 tools/AP_BWE_main/24kto48k/*
 !tools/AP_BWE_main/24kto48k/readme.txt
-
+dispose_out/
+.history/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+
 
 # C extensions
 *.so

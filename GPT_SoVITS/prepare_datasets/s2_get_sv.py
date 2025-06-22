@@ -41,12 +41,6 @@ def my_save(fea, path):  #####fix issue: torch.save doesn't support chinese path
     shutil.move(tmp_path, "%s/%s" % (dir, name))
 
 
-sv_cn_dir = "%s/7-sv_cn" % (opt_dir)
-wav32dir = "%s/5-wav32k" % (opt_dir)
-os.makedirs(opt_dir, exist_ok=True)
-os.makedirs(sv_cn_dir, exist_ok=True)
-os.makedirs(wav32dir, exist_ok=True)
-
 maxx = 0.95
 alpha = 0.5
 if torch.cuda.is_available():
@@ -58,6 +52,7 @@ else:
 
 class SV:
     def __init__(self,device,is_half):
+        # print("s2_get_sv.py sv_path", sv_path)
         pretrained_state = torch.load(sv_path, map_location='cpu')
         embedding_model = ERes2NetV2(baseWidth=24,scale=4,expansion=4)
         embedding_model.load_state_dict(pretrained_state)
@@ -78,8 +73,15 @@ class SV:
             sv_emb = self.embedding_model.forward3(feat)
         return sv_emb
 
-sv=SV(device,is_half)
+
 def name2go(wav_name, wav_path):
+    sv_cn_dir = "%s/7-sv_cn" % (opt_dir)
+    wav32dir = "%s/5-wav32k" % (opt_dir)
+    os.makedirs(opt_dir, exist_ok=True)
+    os.makedirs(sv_cn_dir, exist_ok=True)
+    os.makedirs(wav32dir, exist_ok=True)
+
+    sv=SV(device,is_half)
     sv_cn_path = "%s/%s.pt" % (sv_cn_dir, wav_name)
     if os.path.exists(sv_cn_path):return
     wav_path="%s/%s" % (wav32dir, wav_name)
@@ -89,21 +91,56 @@ def name2go(wav_name, wav_path):
     emb=sv.compute_embedding3(wav32k).cpu()  # torch.Size([1, 20480])
     my_save(emb, sv_cn_path)
 
+def run_args(input_text, input_wav_dir, experiment_name, output_dir, index_part, count_part, half, cuda_device):
+    # {
+    # 'inp_text': '/Users/phoenix/Documents/project/GPT-SoVITS/output/asr_opt/slice.list', 
+    # 'inp_wav_dir': '/Users/phoenix/Documents/project/GPT-SoVITS/dispose_out/slice', 
+    # 'exp_name': 'test', 'opt_dir': 'logs/test', 
+    # 'cnhubert_base_dir': 'GPT_SoVITS/pretrained_models/chinese-hubert-base', 
+    # 'sv_path': 'GPT_SoVITS/pretrained_models/sv/pretrained_eres2netv2w24s4ep4.ckpt', 
+    # 'i_part': '1', 
+    # 'all_parts': '2', 
+    # '_CUDA_VISIBLE_DEVICES': '0'}
 
-with open(inp_text, "r", encoding="utf8") as f:
-    lines = f.read().strip("\n").split("\n")
+    global inp_text, inp_wav_dir, opt_dir, exp_name, sv_path
+    global i_part, all_parts, is_half
+    sv_path = 'GPT_SoVITS/pretrained_models/sv/pretrained_eres2netv2w24s4ep4.ckpt'
 
-for line in lines[int(i_part) :: int(all_parts)]:
-    try:
-        wav_name, spk_name, language, text = line.split("|")
-        wav_name = clean_path(wav_name)
-        if inp_wav_dir != "" and inp_wav_dir != None:
-            wav_name = os.path.basename(wav_name)
-            wav_path = "%s/%s" % (inp_wav_dir, wav_name)
+    inp_text = input_text
+    inp_wav_dir = input_wav_dir
+    opt_dir = output_dir
 
-        else:
-            wav_path = wav_name
-            wav_name = os.path.basename(wav_name)
-        name2go(wav_name, wav_path)
-    except:
-        print(line, traceback.format_exc())
+    exp_name = experiment_name
+
+    i_part = index_part
+    all_parts = count_part
+
+    is_half = half
+    is_half = eval(os.environ.get("is_half", "True")) and torch.cuda.is_available()
+    
+    if cuda_device:
+        os.environ["CUDA_VISIBLE_DEVICES"] = cuda_device
+    
+    run()
+
+def run():
+    with open(inp_text, "r", encoding="utf8") as f:
+        lines = f.read().strip("\n").split("\n")
+
+    for line in lines[int(i_part) :: int(all_parts)]:
+        try:
+            wav_name, spk_name, language, text = line.split("|")
+            wav_name = clean_path(wav_name)
+            if inp_wav_dir != "" and inp_wav_dir != None:
+                wav_name = os.path.basename(wav_name)
+                wav_path = "%s/%s" % (inp_wav_dir, wav_name)
+
+            else:
+                wav_path = wav_name
+                wav_name = os.path.basename(wav_name)
+            name2go(wav_name, wav_path)
+        except:
+            print(line, traceback.format_exc())
+
+if __name__ == "__main__":
+    run()

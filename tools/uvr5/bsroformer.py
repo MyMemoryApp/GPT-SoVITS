@@ -200,7 +200,7 @@ class Roformer_Loader:
         self.model.eval()
         path = input
         os.makedirs(vocal_root, exist_ok=True)
-        os.makedirs(others_root, exist_ok=True)
+        # os.makedirs(others_root, exist_ok=True)
         file_base_name = os.path.splitext(os.path.basename(path))[0]
 
         sample_rate = 44100
@@ -210,8 +210,9 @@ class Roformer_Loader:
         try:
             mix, sr = librosa.load(path, sr=sample_rate, mono=False)
         except Exception as e:
-            print("Can read track: {}".format(path))
-            print("Error message: {}".format(str(e)))
+            # print("Can read track: {}".format(path))
+            # print("Error message: {}".format(str(e)))
+            raise
             return
 
         # in case if model only supports mono tracks
@@ -233,17 +234,17 @@ class Roformer_Loader:
             other = mix_orig - res[target_instrument]  # caculate other instruments
 
             path_vocal = "{}/{}_{}.wav".format(vocal_root, file_base_name, target_instrument)
-            path_other = "{}/{}_{}.wav".format(others_root, file_base_name, other_instruments[0])
+            # path_other = "{}/{}_{}.wav".format(others_root, file_base_name, other_instruments[0])
             self.save_audio(path_vocal, res[target_instrument].T, sr, format)
-            self.save_audio(path_other, other.T, sr, format)
+            # self.save_audio(path_other, other.T, sr, format)
         else:
             # if target instrument is not specified, save the first instrument as vocal and the rest as others
             vocal_inst = self.config["training"]["instruments"][0]
             path_vocal = "{}/{}_{}.wav".format(vocal_root, file_base_name, vocal_inst)
             self.save_audio(path_vocal, res[vocal_inst].T, sr, format)
-            for other in self.config["training"]["instruments"][1:]:  # save other instruments
-                path_other = "{}/{}_{}.wav".format(others_root, file_base_name, other)
-                self.save_audio(path_other, res[other].T, sr, format)
+            # for other in self.config["training"]["instruments"][1:]:  # save other instruments
+            #     path_other = "{}/{}_{}.wav".format(others_root, file_base_name, other)
+            #     self.save_audio(path_other, res[other].T, sr, format)
 
     def save_audio(self, path, data, sr, format):
         # input path should be endwith '.wav'
@@ -290,7 +291,7 @@ class Roformer_Loader:
                     # else it's a mel_band_roformer model
                     self.model_type = "mel_band_roformer"
 
-        print("Detected model type: {}".format(self.model_type))
+        # print("Detected model type: {}".format(self.model_type))
         model = self.get_model_from_config()
         state_dict = torch.load(model_path, map_location="cpu")
         model.load_state_dict(state_dict)

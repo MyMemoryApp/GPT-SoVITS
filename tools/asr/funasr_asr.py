@@ -68,22 +68,23 @@ def create_model(language="zh"):
         return model
 
 
-def execute_asr(input_folder, output_folder, model_size, language):
+def execute_asr(input_folder, output_folder, model_size, language, name=""):
     input_file_names = os.listdir(input_folder)
     input_file_names.sort()
 
     output = []
-    output_file_name = os.path.basename(input_folder)
+    output_file_name = name or os.path.basename(input_folder)
 
     model = create_model(language)
 
     for file_name in tqdm(input_file_names):
         try:
-            print("\n" + file_name)
+            print("\n funasr" + file_name)
             file_path = os.path.join(input_folder, file_name)
             text = model.generate(input=file_path)[0]["text"]
             output.append(f"{file_path}|{output_file_name}|{language.upper()}|{text}")
         except:
+            raise
             print(traceback.format_exc())
 
     output_folder = output_folder or "output/asr_opt"

@@ -41,21 +41,6 @@ path_sovits_v4 = pretrained_sovits_name["v4"]
 is_exist_s2gv3 = os.path.exists(path_sovits_v3)
 is_exist_s2gv4 = os.path.exists(path_sovits_v4)
 
-if os.path.exists("./weight.json"):
-    pass
-else:
-    with open("./weight.json", "w", encoding="utf-8") as file:
-        json.dump({"GPT": {}, "SoVITS": {}}, file)
-
-with open("./weight.json", "r", encoding="utf-8") as file:
-    weight_data = file.read()
-    weight_data = json.loads(weight_data)
-    gpt_path = os.environ.get("gpt_path", weight_data.get("GPT", {}).get(version, GPT_names[-1]))
-    sovits_path = os.environ.get("sovits_path", weight_data.get("SoVITS", {}).get(version, SoVITS_names[0]))
-    if isinstance(gpt_path, list):
-        gpt_path = gpt_path[0]
-    if isinstance(sovits_path, list):
-        sovits_path = sovits_path[0]
 
 # print(2333333)
 # print(os.environ["gpt_path"])
@@ -75,6 +60,7 @@ is_share = eval(is_share)
 if "_CUDA_VISIBLE_DEVICES" in os.environ:
     os.environ["CUDA_VISIBLE_DEVICES"] = os.environ["_CUDA_VISIBLE_DEVICES"]
 is_half = eval(os.environ.get("is_half", "True")) and torch.cuda.is_available()
+
 # is_half=False
 punctuation = set(["!", "?", "…", ",", ".", "-", " "])
 import gradio as gr
@@ -149,10 +135,58 @@ dict_language = dict_language_v1 if version == "v1" else dict_language_v2
 
 tokenizer = AutoTokenizer.from_pretrained(bert_path)
 bert_model = AutoModelForMaskedLM.from_pretrained(bert_path)
-if is_half == True:
-    bert_model = bert_model.half().to(device)
-else:
-    bert_model = bert_model.to(device)
+
+
+now_dir = os.getcwd()
+bert_model = bert_model.to(device)
+ssl_model = cnhubert.get_model()
+gpt_path = ""
+sovits_path = ""
+def init_run():
+    global gpt_path, sovits_path
+    if os.path.exists("./weight.json"):
+        pass
+    else:
+        with open("./weight.json", "w", encoding="utf-8") as file:
+            json.dump({"GPT": {}, "SoVITS": {}}, file)
+
+    with open("./weight.json", "r", encoding="utf-8") as file:
+        weight_data = file.read()
+        weight_data = json.loads(weight_data)
+        gpt_path = os.environ.get("gpt_path", weight_data.get("GPT", {}).get(version, GPT_names[-1]))
+        sovits_path = os.environ.get("sovits_path", weight_data.get("SoVITS", {}).get(version, SoVITS_names[0]))
+        if isinstance(gpt_path, list):
+            gpt_path = gpt_path[0]
+        if isinstance(sovits_path, list):
+            sovits_path = sovits_path[0]
+
+    # cnhubert_base_path = os.environ.get("cnhubert_base_path", "GPT_SoVITS/pretrained_models/chinese-hubert-base")
+    # bert_path = os.environ.get("bert_path", "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large")
+    # infer_ttswebui = os.environ.get("infer_ttswebui", 9872)
+    # infer_ttswebui = int(infer_ttswebui)
+    # is_share = os.environ.get("is_share", "False")
+    # is_share = eval(is_share)
+    # if "_CUDA_VISIBLE_DEVICES" in os.environ:
+    #     os.environ["CUDA_VISIBLE_DEVICES"] = os.environ["_CUDA_VISIBLE_DEVICES"]
+    # is_half = eval(os.environ.get("is_half", "True")) and torch.cuda.is_available()
+
+    global bert_model, ssl_model
+    if is_half == True:
+        bert_model = bert_model.half().to(device)
+    else:
+        bert_model = bert_model.to(device)
+
+    if is_half == True:
+        ssl_model = ssl_model.half().to(device)
+    else:
+        ssl_model = ssl_model.to(device)
+
+    try:
+        next(change_sovits_weights(sovits_path))
+    except:
+        pass
+    change_gpt_weights(gpt_path)
+    os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 
 def get_bert_feature(text, word2ph):
@@ -198,12 +232,6 @@ class DictToAttrRecursive(dict):
         except KeyError:
             raise AttributeError(f"Attribute {item} not found")
 
-
-ssl_model = cnhubert.get_model()
-if is_half == True:
-    ssl_model = ssl_model.half().to(device)
-else:
-    ssl_model = ssl_model.to(device)
 
 
 ###todo:put them to process_ckpt and modify my_save func (save sovits weights), gpt save weights use my_save in process_ckpt
@@ -353,13 +381,6 @@ def change_sovits_weights(sovits_path, prompt_language=None, text_language=None)
     with open("./weight.json", "w") as f:
         f.write(json.dumps(data))
 
-
-try:
-    next(change_sovits_weights(sovits_path))
-except:
-    pass
-
-
 def change_gpt_weights(gpt_path):
     if "！" in gpt_path or "!" in gpt_path:
         gpt_path = name2gpt_path[gpt_path]
@@ -384,11 +405,8 @@ def change_gpt_weights(gpt_path):
         f.write(json.dumps(data))
 
 
-change_gpt_weights(gpt_path)
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 import torch
 
-now_dir = os.getcwd()
 
 
 def clean_hifigan_model():
@@ -754,6 +772,11 @@ def get_tts_wav(
     if_sr=False,
     pause_second=0.3,
 ):
+    print("get_tts_wav", ref_wav_path, prompt_text, prompt_language, text, text_language, how_to_cut)
+    print("get_tts_wav", top_k, top_p, temperature, ref_free, speed, if_freeze, inp_refs, sample_steps, if_sr, pause_second)
+    # get_tts_wav /private/var/folders/kt/_smk6hpd3z994h13fxg2q18w0000gn/T/gradio/3e2c21821a60d25b333ca6c56a857eadf90be00652ebde65cd79b5f1e32bfc3a/2.wav.reformatted_vocals.wav_main_vocal.wav_0000000000_0000158080.wav 情况不妙时这就是我的处理方式丑话说在前头 中文 楼下一个男人病得要死，那间壁的一家唱着留声机;对面是弄孩子。楼上有两人狂笑;还有打牌声。人类的悲欢并不相通，我只觉得他们吵闹。 中文 凑四句一切
+    # get_tts_wav 15 1 1 False 1 False None 8 False 0.3
+
     global cache
     if ref_wav_path:
         pass
@@ -986,7 +1009,12 @@ def get_tts_wav(
             audio_opt /= max_audio
     else:
         audio_opt = audio_opt.cpu().detach().numpy()
-    yield opt_sr, (audio_opt * 32767).astype(np.int16)
+    
+    audio_data = (audio_opt * 32767).astype(np.int16)
+
+    # import scipy.io.wavfile as wavfile
+    # wavfile.write("SoVITS_weights_v2/output.wav", opt_sr, audio_data)
+    yield opt_sr, audio_data
 
 
 def split(todo_text):
@@ -1120,6 +1148,7 @@ def html_left(text, label="p"):
 
 
 with gr.Blocks(title="GPT-SoVITS WebUI", analytics_enabled=False, js=js, css=css) as app:
+    init_run()
     gr.HTML(
         top_html.format(
             i18n("本软件以MIT协议开源, 作者不对软件具备任何控制力, 使用软件者、传播软件导出的声音者自负全责.")

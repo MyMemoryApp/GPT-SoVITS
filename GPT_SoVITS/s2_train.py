@@ -5,8 +5,6 @@ import os
 
 import utils
 
-hps = utils.get_hparams(stage=2)
-os.environ["CUDA_VISIBLE_DEVICES"] = hps.train.gpu_numbers.replace("-", ",")
 import logging
 
 import torch
@@ -51,6 +49,9 @@ device = "cpu"  # cuda以外的设备，等mps优化后加入
 
 
 def main():
+    hps = utils.get_hparams(stage=2)
+    os.environ["CUDA_VISIBLE_DEVICES"] = hps.train.gpu_numbers.replace("-", ",")
+
     if torch.cuda.is_available():
         n_gpus = torch.cuda.device_count()
     else:
@@ -67,8 +68,107 @@ def main():
         ),
     )
 
+def run_args(name, prepare_dir, output_dir, is_half, port):
+    data = {
+            'train': 
+            {
+                'log_interval': 100, 
+                'eval_interval': 500, 
+                'seed': 1234, 'epochs': 8, 
+                'learning_rate': 0.0001, 
+                'betas': [0.8, 0.99], 'eps': 1e-09, 
+                'batch_size': 2, 'fp16_run': False, 
+                'lr_decay': 0.999875, 'segment_size': 20480, 
+                'init_lr_ratio': 1, 'warmup_epochs': 0, 
+                'c_mel': 45, 'c_kl': 1.0, 'text_low_lr_rate': 0.4, 
+                'grad_ckpt': False, 
+                'pretrained_s2G': 'GPT_SoVITS/pretrained_models/v2Pro/s2Gv2Pro.pth', 
+                'pretrained_s2D': 'GPT_SoVITS/pretrained_models/v2Pro/s2Dv2Pro.pth', 
+                'if_save_latest': True, 'if_save_every_weights': True, 'save_every_epoch': 4, 
+                'gpu_numbers': '0', 'lora_rank': '32'
+            }, 
+            'data': 
+            {
+                'max_wav_value': 32768.0, 'sampling_rate': 32000, 
+                'filter_length': 2048, 'hop_length': 640, 'win_length': 2048, 
+                'n_mel_channels': 128, 'mel_fmin': 0.0, 'mel_fmax': None, 
+                'add_blank': True, 'n_speakers': 300, 'cleaned_text': True, 
+                'exp_dir': 'logs/test'
+            }, 
+            'model': 
+            {
+                'inter_channels': 192, 'hidden_channels': 192, 'filter_channels': 768, 
+                'n_heads': 2, 'n_layers': 6, 'kernel_size': 3, 'p_dropout': 0.0, 'resblock': '1', 
+                'resblock_kernel_sizes': [3, 7, 11], 
+                'resblock_dilation_sizes': [[1, 3, 5], [1, 3, 5], [1, 3, 5]], 
+                'upsample_rates': [10, 8, 2, 2, 2], 
+                'upsample_initial_channel': 512, 
+                'upsample_kernel_sizes': [16, 16, 8, 2, 2], 
+                'n_layers_q': 3, 'use_spectral_norm': False, 
+                'gin_channels': 1024, 'semantic_frame_rate': '25hz', 
+                'freeze_quantizer': True, 'version': 'v2Pro'
+            }, 
+            's2_ckpt_dir': 'logs/test', 
+            'content_module': 'cnhubert', 
+            'save_weight_dir': 'SoVITS_weights_v2Pro', 
+            'name': 'test', 
+            'version': 'v2Pro', 
+            'pretrain': None, 
+            'resume_step': None
+        }
+    
+    data["version"] = "v2Pro"
+    data["name"] = name
+    batch_size = 8
+    if is_half == False:
+        data["train"]["fp16_run"] = False
+        batch_size = max(1, batch_size // 2)
+
+    # 每张显卡的batch_size
+    data["train"]["batch_size"] = batch_size
+    # 总训练轮数total_epoch，不建议太高
+    data["train"]["epochs"] = 8
+    # 文本模块学习率权重 0.4
+    data["train"]["text_low_lr_rate"] = 0.4
+    # data["train"]["pretrained_s2G"] = pretrained_s2G
+    # data["train"]["pretrained_s2D"] = pretrained_s2D
+    # data["train"]["if_save_latest"] = if_save_latest
+    # data["train"]["if_save_every_weights"] = if_save_every_weights
+    # 保存频率save_every_epoch 4
+    data["train"]["save_every_epoch"] = 4
+    data["train"]["gpu_numbers"] = '0'
+    # v3 config
+    # data["train"]["grad_ckpt"] = if_grad_ckpt
+    # v1v2 dont need
+    # data["train"]["lora_rank"] = lora_rank
+    # data["model"]["version"] = version
+
+    data["data"]["exp_dir"] = data["s2_ckpt_dir"] = prepare_dir
+    data["save_weight_dir"] = os.path.join(output_dir, 'sovits_train')
+    os.makedirs(data["save_weight_dir"], exist_ok=True)
+
+    hps = utils.get_hparams_with_config(data, stage=2)
+    os.environ["CUDA_VISIBLE_DEVICES"] = hps.train.gpu_numbers.replace("-", ",")
+
+    if torch.cuda.is_available():
+        n_gpus = torch.cuda.device_count()
+    else:
+        n_gpus = 1
+    os.environ["MASTER_ADDR"] = "localhost"
+    # port = str(randint(20000, 55555))
+    os.environ["MASTER_PORT"] = str(port)
+    print("[s2_train] MASTER_PORT is ", port)
+    mp.spawn(
+        run,
+        nprocs=n_gpus,
+        args=(
+            n_gpus,
+            hps,
+        ),
+    )
 
 def run(rank, n_gpus, hps):
+    print(rank, n_gpus, hps)
     global global_step
     if rank == 0:
         logger = utils.get_logger(hps.data.exp_dir)

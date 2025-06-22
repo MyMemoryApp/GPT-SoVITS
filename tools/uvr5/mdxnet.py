@@ -10,7 +10,7 @@ import torch
 from tqdm import tqdm
 
 cpu = torch.device("cpu")
-
+exec_other = False
 
 class ConvTDFNetTrim:
     def __init__(self, device, model_name, target_name, L, dim_f, dim_t, n_fft, hop=1024):
@@ -171,7 +171,7 @@ class Predictor:
 
     def prediction(self, m, vocal_root, others_root, format):
         os.makedirs(vocal_root, exist_ok=True)
-        os.makedirs(others_root, exist_ok=True)
+        exec_other and os.makedirs(others_root, exist_ok=True)
         basename = os.path.basename(m)
         mix, rate = librosa.load(m, mono=False, sr=44100)
         if mix.ndim == 1:
@@ -181,12 +181,12 @@ class Predictor:
         opt = sources[0].T
         if format in ["wav", "flac"]:
             sf.write("%s/%s_main_vocal.%s" % (vocal_root, basename, format), mix - opt, rate)
-            sf.write("%s/%s_others.%s" % (others_root, basename, format), opt, rate)
+            exec_other and sf.write("%s/%s_others.%s" % (others_root, basename, format), opt, rate)
         else:
             path_vocal = "%s/%s_main_vocal.wav" % (vocal_root, basename)
             path_other = "%s/%s_others.wav" % (others_root, basename)
             sf.write(path_vocal, mix - opt, rate)
-            sf.write(path_other, opt, rate)
+            exec_other and sf.write(path_other, opt, rate)
             opt_path_vocal = path_vocal[:-4] + ".%s" % format
             opt_path_other = path_other[:-4] + ".%s" % format
             if os.path.exists(path_vocal):

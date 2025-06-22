@@ -50,32 +50,28 @@ def my_save(fea, path):  #####fix issue: torch.save doesn't support chinese path
     torch.save(fea, tmp_path)
     shutil.move(tmp_path, "%s/%s" % (dir, name))
 
-
-hubert_dir = "%s/4-cnhubert" % (opt_dir)
-wav32dir = "%s/5-wav32k" % (opt_dir)
-os.makedirs(opt_dir, exist_ok=True)
-os.makedirs(hubert_dir, exist_ok=True)
-os.makedirs(wav32dir, exist_ok=True)
-
 maxx = 0.95
 alpha = 0.5
+
 if torch.cuda.is_available():
     device = "cuda:0"
 # elif torch.backends.mps.is_available():
 #     device = "mps"
 else:
     device = "cpu"
-model = cnhubert.get_model()
-# is_half=False
-if is_half == True:
-    model = model.half().to(device)
-else:
-    model = model.to(device)
+
+# model = cnhubert.get_model()
+# # is_half=False
+# if is_half == True:
+#     model = model.half().to(device)
+# else:
+#     model = model.to(device)
 
 nan_fails = []
+hubert_dir = ""
+wav32dir = ""
 
-
-def name2go(wav_name, wav_path):
+def name2go(model, wav_name, wav_path):
     hubert_path = "%s/%s.pt" % (hubert_dir, wav_name)
     if os.path.exists(hubert_path):
         return
@@ -104,31 +100,82 @@ def name2go(wav_name, wav_path):
     )
     my_save(ssl, hubert_path)
 
+def run():
+    global is_half
+    model = cnhubert.get_model()
+    if is_half == True:
+        model = model.half().to(device)
+    else:
+        model = model.to(device)
 
-with open(inp_text, "r", encoding="utf8") as f:
-    lines = f.read().strip("\n").split("\n")
+    global hubert_dir, wav32dir
+    hubert_dir = "%s/4-cnhubert" % (opt_dir)
+    wav32dir = "%s/5-wav32k" % (opt_dir)
+    os.makedirs(opt_dir, exist_ok=True)
+    os.makedirs(hubert_dir, exist_ok=True)
+    os.makedirs(wav32dir, exist_ok=True)
 
-for line in lines[int(i_part) :: int(all_parts)]:
-    try:
-        # wav_name,text=line.split("\t")
-        wav_name, spk_name, language, text = line.split("|")
-        wav_name = clean_path(wav_name)
-        if inp_wav_dir != "" and inp_wav_dir != None:
-            wav_name = os.path.basename(wav_name)
-            wav_path = "%s/%s" % (inp_wav_dir, wav_name)
+    with open(inp_text, "r", encoding="utf8") as f:
+        lines = f.read().strip("\n").split("\n")
 
-        else:
-            wav_path = wav_name
-            wav_name = os.path.basename(wav_name)
-        name2go(wav_name, wav_path)
-    except:
-        print(line, traceback.format_exc())
-
-if len(nan_fails) > 0 and is_half == True:
-    is_half = False
-    model = model.float()
-    for wav in nan_fails:
+    for line in lines[int(i_part) :: int(all_parts)]:
         try:
-            name2go(wav[0], wav[1])
+            # wav_name,text=line.split("\t")
+            wav_name, spk_name, language, text = line.split("|")
+            wav_name = clean_path(wav_name)
+            if inp_wav_dir != "" and inp_wav_dir != None:
+                wav_name = os.path.basename(wav_name)
+                wav_path = "%s/%s" % (inp_wav_dir, wav_name)
+
+            else:
+                wav_path = wav_name
+                wav_name = os.path.basename(wav_name)
+            name2go(model, wav_name, wav_path)
         except:
-            print(wav_name, traceback.format_exc())
+            print(line, traceback.format_exc())
+            raise
+
+    if len(nan_fails) > 0 and is_half == True:
+        is_half = False
+        model = model.float()
+        for wav in nan_fails:
+            try:
+                name2go(model, wav[0], wav[1])
+            except:
+                print(wav_name, traceback.format_exc())
+                raise
+
+def run_args(input_text, input_wav_dir, experiment_name, output_dir, index_part, count_part, half, cuda_device):
+    # {
+    # 'inp_text': '/Users/phoenix/Documents/project/GPT-SoVITS/output/asr_opt/slice.list', 
+    # 'inp_wav_dir': '/Users/phoenix/Documents/project/GPT-SoVITS/dispose_out/slice', 
+    # 'exp_name': 'test', 
+    # 'opt_dir': 'logs/test', 
+    # 'cnhubert_base_dir': 'GPT_SoVITS/pretrained_models/chinese-hubert-base', 
+    # 'sv_path': 'GPT_SoVITS/pretrained_models/sv/pretrained_eres2netv2w24s4ep4.ckpt', 
+    # 'i_part': '0', 
+    # 'all_parts': '2', 
+    # '_CUDA_VISIBLE_DEVICES': '0'}
+    global inp_text, inp_wav_dir, opt_dir, exp_name
+    global i_part, all_parts, is_half
+    cnhubert.cnhubert_base_path = 'GPT_SoVITS/pretrained_models/chinese-hubert-base'
+
+    inp_text = input_text
+    inp_wav_dir = input_wav_dir
+    opt_dir = output_dir
+
+    exp_name = experiment_name
+
+    i_part = index_part
+    all_parts = count_part
+
+    is_half = half
+    is_half = eval(os.environ.get("is_half", "True")) and torch.cuda.is_available()
+    
+    if cuda_device:
+        os.environ["CUDA_VISIBLE_DEVICES"] = cuda_device
+    
+    run()
+
+if __name__ == "__main__":
+    run()
