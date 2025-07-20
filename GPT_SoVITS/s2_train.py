@@ -119,7 +119,8 @@ def run_args(name, prepare_dir, output_dir, is_half, port):
     
     data["version"] = "v2Pro"
     data["name"] = name
-    batch_size = 8
+    # batch_size = 8
+    batch_size = 4
     if is_half == False:
         data["train"]["fp16_run"] = False
         batch_size = max(1, batch_size // 2)

@@ -6,7 +6,7 @@ import torchaudio
 import librosa
 import numpy as np
 import soundfile as sf
-
+from io import BytesIO
 from peft import LoraConfig, get_peft_model
 
 from text import chinese
@@ -58,7 +58,7 @@ splits = {
 
 v3v4set = {"v3", "v4"}
 
-def change_sovits_weights(sovits_path, is_half, prompt_language=None, text_language=None):
+def change_sovits_weights(sovits_path, is_half, prompt_language=None, text_language=None, train_memory=False):
     # dict_language
     vq_model, hps, = None, None
 
@@ -108,7 +108,7 @@ def change_sovits_weights(sovits_path, is_half, prompt_language=None, text_langu
     #         {"__type__": "update", "value": i18n("模型加载中，请等待"), "interactive": False},
     #     )
 
-    dict_s2 = load_sovits_new(sovits_path)
+    dict_s2 = load_sovits_new(sovits_path, memory=train_memory)
     hps = dict_s2["config"]
     hps = DictToAttrRecursive(hps)
     hps.model.semantic_frame_rate = "25hz"
@@ -155,13 +155,13 @@ def change_sovits_weights(sovits_path, is_half, prompt_language=None, text_langu
     vq_model.eval()
     vq_model.load_state_dict(dict_s2["weight"], strict=False)
 
-    with open("./weight.json") as f:
-        data = f.read()
-        data = json.loads(data)
-        data["SoVITS"][version] = sovits_path
+    # with open("./weight.json") as f:
+    #     data = f.read()
+    #     data = json.loads(data)
+    #     data["SoVITS"][version] = sovits_path
 
-    with open("./weight.json", "w") as f:
-        f.write(json.dumps(data))
+    # with open("./weight.json", "w") as f:
+    #     f.write(json.dumps(data))
 
     return vq_model, hps
 
@@ -182,13 +182,13 @@ def change_gpt_weights(gpt_path, is_half):
     # total = sum([param.nelement() for param in t2s_model.parameters()])
     # print("Number of parameter: %.2fM" % (total / 1e6))
 
-    with open("./weight.json") as f:
-        data = f.read()
-        data = json.loads(data)
-        data["GPT"][version] = gpt_path
+    # with open("./weight.json") as f:
+    #     data = f.read()
+    #     data = json.loads(data)
+    #     data["GPT"][version] = gpt_path
 
-    with open("./weight.json", "w") as f:
-        f.write(json.dumps(data))
+    # with open("./weight.json", "w") as f:
+    #     f.write(json.dumps(data))
 
     return hz, max_sec, t2s_model, config
 
@@ -478,6 +478,7 @@ def get_tts_wav(
     sample_steps=8,
     if_sr=False,
     pause_second=0.3,
+    train_memory=False
 ):
     # print("get_tts_wav", ref_wav_path, prompt_text, prompt_language, text, text_language)
     # print("get_tts_wav", top_k, top_p, temperature, ref_free, speed, if_freeze, inp_refs, sample_steps, if_sr, pause_second)
@@ -558,7 +559,17 @@ def get_tts_wav(
 
     print("实际输入的目标文本:", text)
 
-    vq_model, hps = change_sovits_weights(sovits_path, is_half)
+    vq_model, hps = change_sovits_weights(sovits_path, is_half, train_memory=train_memory)
+    if train_memory:
+        bio = BytesIO()
+        bio.write(gpt_path.data)
+        bio.seek(0)
+        gpt_path = bio
+
+        wio = BytesIO()
+        wio.write(ref_wav_path.data)
+        wio.seek(0)
+        ref_wav_path = wio
     hz, max_sec, t2s_model, gpt_config = change_gpt_weights(gpt_path, is_half)
 
     zero_wav = np.zeros(
@@ -690,6 +701,9 @@ def get_tts_wav(
             #             traceback.print_exc()
 
             if len(refers) == 0:
+                if train_memory:
+                    ref_wav_path.seek(0)
+                    
                 refers, audio_tensor = get_spepc(hps, ref_wav_path, dtype, device, is_v2pro)
                 refers = [refers]
                 if is_v2pro:
@@ -785,12 +799,16 @@ def get_tts_wav(
     else:
         audio_opt = audio_opt.cpu().detach().numpy()
 
-    output_file = os.path.join(output_dir, "output.wav")
+    if str(output_dir).endswith(".wav"):
+        output_file = output_dir
+    else:
+        output_file = os.path.join(output_dir, "output.wav")
+
     audio_data = (audio_opt * 32767).astype(np.int16)
 
     # import scipy.io.wavfile as wavfile
 
-    output_file1 = output_file + "1"
+    # output_file1 = output_file + "1"
     # wavfile.write(output_file1, opt_sr, audio_data)
     sf.write(output_file, audio_data, opt_sr, subtype='PCM_16')
 

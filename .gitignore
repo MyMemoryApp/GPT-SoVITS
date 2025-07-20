@@ -19,6 +19,8 @@ ref_audios
 tools/AP_BWE_main/24kto48k/*
 !tools/AP_BWE_main/24kto48k/readme.txt
 dispose_out/
+1_output/
+dispose_datas/
 .history/
 # Byte-compiled / optimized / DLL files
 __pycache__/

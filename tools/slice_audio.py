@@ -10,7 +10,7 @@ from tools.my_utils import load_audio
 from slicer2 import Slicer
 
 
-def slice(inp, opt_root, threshold, min_length, min_interval, hop_size, max_sil_kept, _max, alpha, i_part, all_part):
+def slice(inp, opt_root, threshold, min_length, min_interval, hop_size, max_sil_kept, _max, alpha, i_part, all_part, name=None):
     # print("inp", inp, 
     #       "opt_root", opt_root,
     #       "threshold", threshold, 
@@ -23,6 +23,7 @@ def slice(inp, opt_root, threshold, min_length, min_interval, hop_size, max_sil_
     #       "i_part", i_part,
     #       "all_part", all_part)
     os.makedirs(opt_root, exist_ok=True)
+    input = []
     if os.path.isfile(inp):
         input = [inp]
     elif os.path.isdir(inp):
@@ -30,6 +31,8 @@ def slice(inp, opt_root, threshold, min_length, min_interval, hop_size, max_sil_
     else:
         raise Exception("输入路径存在但既不是文件也不是文件夹")
         return "输入路径存在但既不是文件也不是文件夹"
+    # print("slice", input)
+    # return
     slicer = Slicer(
         sr=32000,  # 长音频采样率
         threshold=int(threshold),  # 音量小于这个值视作静音的备选切割点
@@ -41,9 +44,11 @@ def slice(inp, opt_root, threshold, min_length, min_interval, hop_size, max_sil_
     _max = float(_max)
     alpha = float(alpha)
     for inp_path in input[int(i_part) :: int(all_part)]:
-        # print(inp_path)
+        # print("[slice] dispose", inp_path)
         try:
+            # name = name or os.path.basename(inp_path)
             name = os.path.basename(inp_path)
+            print("[slice] dispose", inp_path, "output", name)
             audio = load_audio(inp_path, 32000)
             # print(audio.shape)
             for chunk, start, end in slicer.slice(audio):  # start和end是帧数

@@ -163,9 +163,10 @@ def run_uvr5(dv, half, model_name, inp_root, save_root_vocal, paths, save_root_i
         else:
             pass
             # paths = [path.name for path in paths]
-        # print("paths", paths)
+        print("[run_uvr5] paths", paths)
         for path in paths:
-            inp_path = os.path.join(inp_root, path)
+            inp_path = path
+            # inp_path = os.path.join(inp_root, path)
             # print("inp_path is ", inp_path, "?", os.path.exists(inp_path))
             if os.path.isfile(inp_path) == False:
                 continue
@@ -190,7 +191,8 @@ def run_uvr5(dv, half, model_name, inp_root, save_root_vocal, paths, save_root_i
             try:
                 if done == 0:
                     pre_fun._path_audio_(inp_path, save_root_ins, save_root_vocal, format0, is_hp3)
-                return
+                # return
+                continue
             except:
                 raise
 
