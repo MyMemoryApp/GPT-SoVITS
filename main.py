@@ -5,6 +5,7 @@ import redis
 import logging
 import traceback
 import urllib3
+from datetime import datetime
 
 import psycopg2
 from psycopg2 import pool
@@ -53,9 +54,18 @@ class PostgresDB:
     _get_voice_clone_info_sql = "SELECT id, status FROM {name} WHERE id = %s".format(name=VoiceCloneTableName)
     _update_voice_clone_info_sql = "UPDATE {name} SET status = %s WHERE id = %s".format(name=VoiceCloneTableName)
     _get_inferece_order_sql = """
-        SELECT vid, date_str, COALESCE(datas->>%s, '') AS data
+        SELECT vid, date_str, COALESCE(datas->%s, '[]'::jsonb) AS data
         FROM {name}
         WHERE id = %s;
+    """.format(name=InferenceOrderTableName)
+    _update_inference_exec_date_sql = """
+        UPDATE {name}
+        SET datas = jsonb_set(
+            datas,
+            %s,
+            datas->%s || to_jsonb(%s::text)
+        )
+        WHERE id = %s AND datas ? %s;
     """.format(name=InferenceOrderTableName)
 
     def __init__(self, db_params, min_conn=1, max_conn=10):
@@ -185,6 +195,8 @@ class PostgresDB:
         res = self.query(PostgresDB._get_inferece_order_sql, (time_str, order_id), fetch_one=True)
         return res
 
+    def update_inference_exec_date(self, order_id, time_str, exec_date):
+        self.update(PostgresDB._update_inference_exec_date_sql, ("{{{}}}".format(time_str), time_str, exec_date, order_id, time_str))
 
 class MinioClient:
     """
@@ -584,7 +596,7 @@ class RedisClient:
             self.get_stream_group_next()
             from2 = True
         
-        vc_logger.info("[get_task] from1 {} from2 {}".format(from1, from2))
+        vc_logger.info("[get_task] from1 {} from2 {} task {}".format(from1, from2, self.__current_task))
         return self.__current_task
     
     def get_stream_group_current(self):
@@ -642,7 +654,8 @@ class RedisClient:
         
         msg_id = self.__current_task[0]
         self.client.xack(RedisStream, RedisStreamGroup, msg_id)
-        logging.info("commit_task ok ", msg_id)
+        self.__current_task = None
+        vc_logger.info("commit_task ok {}".format(msg_id))
     
     def get_current(self):
         return self.__current_task
@@ -681,13 +694,13 @@ def dispose(db: PostgresDB, redis_cli: RedisClient, minio_cli: MinioClient):
                 step = task_data.get('step')
                 # infrence_data = task_args[2]
 
-                vc_logger.info(" task {} vid {} step {} start".format(task_id, vid, step))
+                vc_logger.info("task {} vid {} step {} start".format(task_id, vid, step))
 
                 # step 2 的 id 不是 vid 是 order id
                 if "2" != step:
                     task_status = db.get_voice_clone_info_status(vid)
                     if VoiceCloneStatus.fail == task_status:
-                        vc_logger.error("db.get_voice_clone_info_status is -1 {}".format(vid))
+                        vc_logger.error("{} db.get_voice_clone_info_status is -1 ".format(task_id))
                         break
                 
                 root_dir ="{}/{}".format(data_dir, vid)
@@ -695,42 +708,42 @@ def dispose(db: PostgresDB, redis_cli: RedisClient, minio_cli: MinioClient):
                 #  create asr file
                 if "0" == step:
                     if task_status != VoiceCloneStatus.init:
-                        vc_logger.error("db.get_voice_clone_info_status task_status != 0 init {} {}".format(vid, task_status))
+                        vc_logger.error("{} {} db.get_voice_clone_info_status task_status != 0 init ".format(task_id, task_status))
                         break
 
-                    # minio_cli.get_bucket_location_files(uid, "src")
+                    # minio_cli.get_bucket_location_files(vid, "src")
                     
                     minio_cli.download_bucket_location_files(vid, "src", root_dir)
                     voice_clone.dispose_asr(os.path.join(root_dir, "src"), root_dir, device="cpu", is_half=False)
                     ok = minio_cli.upload_file(vid, "asr/user.list", os.path.join(root_dir, "asr/user.list"))
                     if not ok:
-                        vc_logger.error("minio_cli.upload_file fail. {}".format(vid))
+                        vc_logger.error("{} minio_cli.upload_file fail.".format(task_id))
                         break
                     
                     db.update_voice_clone_info_status(vid, VoiceCloneStatus.createAsr)
                     redis_cli.commit_task()
-                    vc_logger.info("task {} vid {} step {} end".format(task_id, vid, step))
+                    vc_logger.info("{} end".format(task_id))
                     break
                 
                 # create model
                 if "1" == step:
                     if task_status != VoiceCloneStatus.correctAsr:
-                        vc_logger.error("db.get_voice_clone_info_status task_status != 2 correctAsr {} {}".format(vid, task_status))
+                        vc_logger.error("{} {} db.get_voice_clone_info_status task_status != 2 correctAsr".format(task_id, task_status))
                         break
 
-                    # ok = minio_cli.download_file(uid, "asr/user1.list", os.path.join(root_dir, "asr/user.list"))
+                    # ok = minio_cli.download_file(vid, "asr/user1.list", os.path.join(root_dir, "asr/user.list"))
                     # if not ok:
-                    #     raise Exception("minio_cli.download_file vid {}".format(uid))
+                    #     raise Exception("minio_cli.download_file vid {}".format(vid))
                     # voice_clone.dispose_train_model(root_dir, False, process_flag)
 
                     ok = minio_cli.upload_file(vid, "train/user-e15.ckpt", os.path.join(root_dir, "train/gpt_train/user-e15.ckpt"))
                     if not ok:
-                        vc_logger.error("minio_cli.upload_file train gpt fail {}".format(vid))
+                        vc_logger.error("{} minio_cli.upload_file train gpt fail ".format(task_id))
                         break
                     
                     ok = minio_cli.upload_file(vid, "train/user_e8_s400.pth", os.path.join(root_dir, "train/sovits_train/user_e8_s400.pth"))
                     if not ok:
-                        vc_logger.error("minio_cli.upload_file train sovits fail {}".format(vid))
+                        vc_logger.error("{} minio_cli.upload_file train sovits fail".format(task_id))
                         break
 
                     db.update_voice_clone_info_status(vid, VoiceCloneStatus.done)
@@ -742,23 +755,31 @@ def dispose(db: PostgresDB, redis_cli: RedisClient, minio_cli: MinioClient):
                     order_id = vid
                     time_str = task_data.get("time_str")
                     if not time_str:
-                        vc_logger.error("step 2 get time_str fail task {} {}".format(task_id, vid))
+                        vc_logger.error("{} step 2 get time_str fail task ".format(task_id))
                         redis_cli.commit_task()
                         break
 
                     info = db.get_inference_order_by_timestr(order_id, time_str)
                     if not info or not info[1]:
-                        vc_logger.error("step 2 get_inference_order_data fail task {} {}".format(task_id, vid))
+                        vc_logger.error("{} step 2 get_inference_order_data fail task ".format(task_id))
                         redis_cli.commit_task()
                         break
                     
                     voice_id = info[0]
                     date_str = info[1]
                     data = info[2]
+                    if len(data) == 2:
+                        redis_cli.commit_task()
+                        vc_logger.info("{} oid {} vid {} inference ok yet {}".format(task_id, order_id, voice_id, data[1]))
+                        break
+
+                    root_dir ="{}/{}".format(data_dir, voice_id)
+                    save_file_name = "{}{}.wav".format(date_str, time_str)
+                    vc_logger.info("{} oid {} vid {} file {} init.".format(task_id, order_id, voice_id, save_file_name))
 
                     task_status = db.get_voice_clone_info_status(voice_id)
                     if VoiceCloneStatus.done != task_status:
-                        vc_logger.error("step 2 db.get_voice_clone_info_status not done {} {}".format(task_status, voice_id))
+                        vc_logger.error("{} {}step 2 db.get_voice_clone_info_status not done".format(task_id, task_status, ))
                         redis_cli.commit_task()
                         break
 
@@ -766,7 +787,7 @@ def dispose(db: PostgresDB, redis_cli: RedisClient, minio_cli: MinioClient):
                     # asr_text_file = os.path.join(voice_clone_minio_dir, "asr", "user1.list")
                     resp = minio_cli.get_file(voice_id, "asr/user1.list")
                     if not resp:
-                        vc_logger.error("step 2  minio_cli.get_file asr/user1.list fail.".format(task_status, voice_id))
+                        vc_logger.error("{} step 2  minio_cli.get_file asr/user1.list fail.".format(task_id))
                         redis_cli.commit_task()
                         break
 
@@ -787,7 +808,7 @@ def dispose(db: PostgresDB, redis_cli: RedisClient, minio_cli: MinioClient):
                                 wav_file = content_list[0]
                                 wav_text = content_list[3]
                                 continue
-                            
+
                     wav_file = wav_file.split("/")[-1]
                     src_file = minio_cli.list_objects(voice_id, "src")
                     for file_info in src_file:
@@ -798,7 +819,7 @@ def dispose(db: PostgresDB, redis_cli: RedisClient, minio_cli: MinioClient):
                     
                     resp = minio_cli.get_file(voice_id, wav_file)
                     if not resp:
-                        vc_logger.error("step 2  minio_cli.get_file train/user-e15.ckpt fail.".format(task_status, voice_id))
+                        vc_logger.error("{} step 2  minio_cli.get_file train/user-e15.ckpt fail.".format(task_id))
                         redis_cli.commit_task()
                         break
                     wav_data = resp
@@ -807,28 +828,39 @@ def dispose(db: PostgresDB, redis_cli: RedisClient, minio_cli: MinioClient):
 
                     resp = minio_cli.get_file(voice_id, "train/user-e15.ckpt")
                     if not resp:
-                        vc_logger.error("step 2  minio_cli.get_file train/user-e15.ckpt fail.".format(task_status, voice_id))
+                        vc_logger.error("{} step 2  minio_cli.get_file train/user-e15.ckpt fail.".format(task_id))
                         redis_cli.commit_task()
                         break
                     gpt_data = resp
 
                     resp = minio_cli.get_file(voice_id, "train/user_e8_s400.pth")
                     if not resp:
-                        vc_logger.error("step 2  minio_cli.get_file train/user_e8_s400.pth fail.".format(task_status, voice_id))
+                        vc_logger.error("{} step 2  minio_cli.get_file train/user_e8_s400.pth fail.".format(task_id))
                         redis_cli.commit_task()
                         break
                     sovites_data = resp
 
-                    vc_logger.info("task {} uid {} step {} inference run.".format(task_id, vid, step))
-                    voice_clone.inference_result_by_minio(wav_data, wav_text, data, root_dir, gpt_data, sovites_data, "{}{}.wav".format(date_str, time_str))
-                    vc_logger.info("task {} uid {} step {} inference done.".format(task_id, vid, step))
+                    vc_logger.info("{} inference run.".format(task_id))
+                    voice_clone.inference_result_by_minio(wav_data, wav_text, data[0], root_dir, gpt_data, sovites_data, save_file_name)
+                    vc_logger.info("{} inference done.".format(task_id))
+
+                    ok = minio_cli.upload_file(voice_id, "out/{}".format(save_file_name), os.path.join(root_dir, "inference", save_file_name))
+                    if not ok:
+                        vc_logger.error("{} upload to minio fail.".format(task_id))
+                        break
+                    
+                    vc_logger.info("{} upload minio ok {}.".format(task_id, ok))
+                    
+                    exec_date = datetime.now().strftime("%Y-%m-%d&%H:%M:%S")
+                    db.update_inference_exec_date(order_id, time_str, exec_date)
+                    redis_cli.commit_task()
                     break
         except Exception as e:
             err = traceback.format_exc().replace("\n", "-->")
             vc_logger.error(err)
         finally:
             if has_task:
-                vc_logger.info("task {} uid {} done.".format(task_id, vid))
+                vc_logger.info("{} finally done.".format(task_id))
             else:
                 vc_logger.info("wait task...")
 
@@ -850,7 +882,11 @@ def main():
     try:
         db = PostgresDB(db_params=db_connection_params)
         vc_logger.info("init postgres ok.")
-
+        
+        # db.update_inference_exec_date("84edf0d3-f954-4cfd-b850-40a581a4c93b", "125423", "20250719-125425")
+        # res = db.get_inference_order_by_timestr("76b9e09d-3a36-4c48-b87e-4fadf661b0a8", "120556")
+        # print(res)
+        # return
         redis_client = RedisClient(host='127.0.0.1', port=6379, db=0)
         vc_logger.info("init redis ok.")
 
